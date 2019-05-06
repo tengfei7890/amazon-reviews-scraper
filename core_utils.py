@@ -5,13 +5,23 @@ import json
 import logging
 import os
 import re
+import csv
 import requests
+import random
 from bs4 import BeautifulSoup
 
 from banned_exception import BannedException
 from constants import AMAZON_BASE_URL
 
 OUTPUT_DIR = 'comments'
+
+HEADERS_LIST = [
+    'Mozilla/5.0 (Windows; U; Windows NT 6.1; x64; fr; rv:1.9.2.13) Gecko/20101203 Firebird/3.6.13',
+    'Mozilla/5.0 (compatible, MSIE 11, Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (Windows; U; Windows NT 6.1; rv:2.2) Gecko/20110201',
+    'Opera/9.80 (X11; Linux i686; Ubuntu/14.10) Presto/2.12.388 Version/12.16',
+    'Mozilla/5.0 (Windows NT 5.2; RW; rv:7.0a1) Gecko/20091211 SeaMonkey/9.23a1pre'
+]
 
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
@@ -32,6 +42,17 @@ def mkdir_p(path):
         else:
             raise
 
+def write_to_csv(reviews, product_id):
+    if len(reviews) == 0:
+        return False
+    filepath = os.path.join('reviews', '{}.csv'.format(product_id))
+    with open(filepath, "w", encoding="utf-8", newline='') as output:
+        f = csv.writer(output)
+        f.writerow(["author", "author_url", "title", "rating", "verified", "types", "body", "product_id", "review_url", "review_date", "helpful"])
+        for r in reviews:
+            f.writerow([r['author'], r['author_url'], r['title'], r['rating'], r['verified'],
+                r['types'], r['body'], r['product_id'],
+                r['review_url'], r['review_date'], r['helpful']])
 
 def persist_comment_to_disk(reviews):
     if len(reviews) == 0:
@@ -72,7 +93,7 @@ def get_soup(url):
     logging.debug('Script is going to sleep for {} (Amazon throttling). ZZZzzzZZZzz.'.format(nap_time_sec))
     sleep(nap_time_sec)
     header = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.134 Safari/537.36'
+        'User-Agent': random.choice(HEADERS_LIST)
     }
     logging.debug('-> to Amazon : {}'.format(url))
     out = requests.get(url, headers=header)

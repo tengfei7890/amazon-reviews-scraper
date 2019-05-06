@@ -1,10 +1,12 @@
 import logging
 import math
 import re
+import time
 import textwrap
 
 from constants import AMAZON_BASE_URL
 from core_utils import get_soup, persist_comment_to_disk
+from banned_exception import BannedException
 
 
 # https://www.amazon.co.jp/product-reviews/B00Z16VF3E/ref=cm_cr_arp_d_paging_btm_1?ie=UTF8&reviewerType=all_reviews&showViewpoints=1&sortBy=helpful&pageNumber=1
@@ -22,7 +24,12 @@ def get_comments_based_on_keyword(search):
     logging.info('SEARCH = {}'.format(search))
     url = AMAZON_BASE_URL + '/s/ref=nb_sb_noss_2?url=search-alias%3Daps&field-keywords=' + \
           search + '&rh=i%3Aaps%2Ck%3A' + search
-    soup = get_soup(url)
+    try:
+        soup = get_soup(url)
+    except BannedException:
+        print('Waiting for chances...')
+        time.sleep(60*40)
+        soup = get_soup(url)
 
     product_ids = [div.attrs['data-asin'] for div in soup.find_all('div') if 'data-index' in div.attrs]
     logging.info('Found {} items.'.format(len(product_ids)))
@@ -41,7 +48,13 @@ def get_comments_with_product_id(product_id):
         return reviews
 
     product_reviews_link = get_product_reviews_url(product_id)
-    so = get_soup(product_reviews_link)
+    try:
+        so = get_soup(product_reviews_link)
+    except BannedException:
+        print('Waiting for chances...')
+        time.sleep(60*40)
+        so = get_soup(product_reviews_link)
+
     max_page_number = so.find(attrs={'data-hook': 'total-review-count'})
     if max_page_number is None:
         return reviews
@@ -56,7 +69,12 @@ def get_comments_with_product_id(product_id):
     for page_number in range(1, max_page_number + 1):
         if page_number > 1:
             product_reviews_link = get_product_reviews_url(product_id, page_number)
-            so = get_soup(product_reviews_link)
+            try:
+                so = get_soup(product_reviews_link)
+            except BannedException:
+                print('Waiting for chances...')
+                time.sleep(60*40)
+                so = get_soup(product_reviews_link)
 
         cr_review_list_so = so.find(id='cm_cr-review_list')
 
@@ -75,8 +93,15 @@ def get_comments_with_product_id(product_id):
             body = review.find(attrs={'data-hook': 'review-body'}).text.strip()
             title = review.find(attrs={'data-hook': 'review-title'}).text.strip()
             author_url = review.find(attrs={'data-hook': 'genome-widget'}).find('a', href=True)
+            author = review.find(attrs={'data-hook': 'genome-widget'}).find('span', 'a-profile-name').text.strip()
             review_url = review.find(attrs={'data-hook': 'review-title'}).attrs['href']
             review_date = review.find(attrs={'data-hook': 'review-date'}).text.strip()
+            verified = review.find(attrs={'data-hook': 'avp-badge'}) or ''
+            types = review.find(attrs={'data-hook': 'format-strip'}) or ''
+            if types != '':
+                types = types.text.strip()
+            if verified != '':
+                verified = verified.text.strip()
             if author_url:
                 author_url = author_url['href'].strip()
             try:
@@ -89,19 +114,26 @@ def get_comments_with_product_id(product_id):
             logging.info('***********************************************')
             logging.info('TITLE    = ' + title)
             logging.info('RATING   = ' + rating)
+            logging.info('VERIFIED   = ' + verified)
+            logging.info('TYPES   = ' + types)
             logging.info('CONTENT  = ' + '\n'.join(textwrap.wrap(body, 80)))
             logging.info('HELPFUL  = ' + helpful)
             logging.info('AUTHOR URL  = ' + author_url if author_url else '')
+            logging.info('AUTHOR  = ' + author if author else '')
             logging.info('REVIEW URL  = ' + review_url if review_url else '')
             logging.info('REVIEW DATE  = ' + review_date if review_date else '')
             logging.info('***********************************************\n')
             reviews.append({'title': title,
                             'rating': rating,
+                            'verified':verified,
+                            'types':types,
                             'body': body,
                             'product_id': product_id,
                             'author_url': author_url,
+                            'author':author,
                             'review_url': review_url,
                             'review_date': review_date,
+                            'helpful':helpful,
                            })
     return reviews
 
